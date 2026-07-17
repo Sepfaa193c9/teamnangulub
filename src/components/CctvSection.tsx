@@ -306,7 +306,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
 
   // Autoplay demo traffic video on mount
   useEffect(() => {
-    startVideoProcessing(false, "https://assets.mixkit.co/videos/preview/mixkit-highway-traffic-with-cars-and-trucks-43181-large.mp4");
+    startVideoProcessing(false, "/result_vehicle.mp4");
     setShowViolationZone(true);
     
     return () => {
@@ -703,13 +703,14 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   </div>
                 ) : (
                   <div className="w-full h-full relative">
-                    <iframe
-                      src={`https://www.youtube.com/embed?listType=search&list=Live+Traffic+CCTV+${encodeURIComponent(selectedCamera.location)}&autoplay=1&mute=1&controls=0&loop=1`}
-                      title="Real-time CCTV Feed"
-                      className="w-full h-full object-cover opacity-80"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    ></iframe>
+                    <video
+                      src="/result_vehicle.mp4"
+                      title="result_vehicle.mp4"
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      muted
+                      loop
+                    />
                   </div>
                 )}
               </div>
