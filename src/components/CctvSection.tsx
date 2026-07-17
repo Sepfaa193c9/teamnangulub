@@ -43,7 +43,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
   const [inferenceLatency, setInferenceLatency] = useState<number | null>(null);
   const [actualFps, setActualFps] = useState<number | null>(null);
   const [fastApiEndpoint, setFastApiEndpoint] = useState<string>(() => {
-    const saved = localStorage.getItem("edith_fastapi_endpoint");
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("edith_fastapi_endpoint");
+    } catch (e) {
+      console.warn("localStorage is not available in this environment:", e);
+    }
     if (saved) return saved;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
@@ -416,9 +421,14 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               const now = Date.now();
               if (now - lastSentTime > 100) {
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  // Compress image to JPEG at 0.5 quality for super fast networking
-                  const base64Img = canvasRef.current.toDataURL("image/jpeg", 0.5);
-                  wsRef.current.send(JSON.stringify({ image: base64Img }));
+                  try {
+                    // Compress image to JPEG at 0.5 quality for super fast networking
+                    const base64Img = canvasRef.current.toDataURL("image/jpeg", 0.5);
+                    wsRef.current.send(JSON.stringify({ image: base64Img }));
+                  } catch (taintError) {
+                    console.warn("Canvas is tainted or failed to convert toDataURL:", taintError);
+                    updateSimulatedDetections();
+                  }
                   lastSentTime = now;
                 } else {
                   // WS is offline, execute offline-first high-fidelity 3D traffic simulator
@@ -990,7 +1000,11 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   value={fastApiEndpoint}
                   onChange={(e) => {
                     setFastApiEndpoint(e.target.value);
-                    localStorage.setItem("edith_fastapi_endpoint", e.target.value);
+                    try {
+                      localStorage.setItem("edith_fastapi_endpoint", e.target.value);
+                    } catch (err) {
+                      console.warn("Failed to set item in localStorage:", err);
+                    }
                   }}
                   placeholder="http://localhost:8000 atau wss://yolov8-production.up.railway.app"
                   className="flex-1 bg-brand-dark border border-brand-cyan/15 hover:border-brand-cyan/30 focus:border-brand-cyan/50 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none placeholder-gray-600 transition-colors"
