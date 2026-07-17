@@ -4,16 +4,12 @@ import asyncio
 import cv2
 import numpy as np
 import base64
-import re
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
-import easyocr
-from supabase import create_client, Client
 
-app = FastAPI(title="EDITH FastAPI AI Engine")
+app = FastAPI(title="EDITH FastAPI AI Engine - LIGHT DEBUG")
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,19 +18,125 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==========================================
-# INITIALIZATION & MODEL CACHING
-# ==========================================
-print("=== INITIALIZING EDITH AI ENGINE ===")
+print("=== RUNNING LIGHT DEBUG MODE (NO EASYOCR) ===")
 
-# Lazy load models to ensure startup is fast and resilient
 model = None
-reader = None
-supabase_client = None
 
 def get_yolo_model():
     global model
     if model is None:
+        print("Loading YOLOv8 model (yolov8n.pt)...")
+        model = YOLO('yolov8n.pt')
+    return model
+
+@app.get("/")
+def read_root():
+    return {"status": "online", "mode": "light-debug"}
+
+@app.websocket("/ws/detect")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("[DEBUG] Client connected!")
+    
+    try:
+        yolo = get_yolo_model()
+    except Exception as e:
+        print(f"Gagal load YOLO: {e}")
+
+    try:
+        import time
+        while True:
+            data_str = await websocket.receive_text()
+            start_time = time.time()
+            
+            try:
+                msg = json.loads(data_str)
+                image_data = msg.get("image", "")
+            except:
+                image_data = data_str
+
+            if not image_data:
+                continue
+
+            if "," in image_data:
+                image_data = image_data.split(",")[1]
+
+            img_bytes = base64.b64decode(image_data)
+            np_arr = np.frombuffer(img_bytes, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+            if frame is None:
+                continue
+
+            h, w, _ = frame.shape
+            
+            # Run YOLO + ByteTrack
+            results = yolo.track(
+                frame, 
+                persist=True, 
+                classes=[2, 3, 5, 7], 
+                tracker="bytetrack.yaml", 
+                verbose=False
+            )
+
+            detections = []
+            
+            if results and len(results) > 0:
+                boxes = results[0].boxes
+                if boxes is not None and len(boxes) > 0:
+                    for i in range(len(boxes)):
+                        box = boxes[i]
+                        xyxy = box.xyxy[0].tolist()
+                        cls_id = int(box.cls[0].item())
+                        conf = float(box.conf[0].item())
+                        track_id = int(box.id[0].item()) if box.id is not None else 99
+                        
+                        class_names = {2: "Mobil", 3: "Sepeda Motor", 5: "Bus", 7: "Truk"}
+                        label = class_names.get(cls_id, "Kendaraan")
+
+                        # Generate plat nomor dummy instan secara matematis (Tanpa EasyOCR)
+                        prefixes = ["B", "D", "F", "L", "H", "AB", "DK", "N"]
+                        prefix = prefixes[track_id % len(prefixes)]
+                        num = (track_id * 179) % 8999 + 1000
+                        suffix = f"{chr(65 + (track_id % 26))}{chr(65 + ((track_id + 5) % 26))}"
+                        plate_text = f"{prefix} {num} {suffix}"
+
+                        # Koordinat box dalam persen untuk frontend
+                        ymin, xmin, ymax, xmax = map(int, xyxy)
+                        yolo_box = [
+                            round((ymin / h) * 100, 1),
+                            round((xmin / w) * 100, 1),
+                            round((ymax / h) * 100, 1),
+                            round((xmax / w) * 100, 1)
+                        ]
+
+                        detections.append({
+                            "track_id": track_id,
+                            "label": f"{label} #{track_id}",
+                            "confidence": round(conf * 100, 1),
+                            "box": yolo_box,
+                            "plate": plate_text,
+                            "violations": []
+                        })
+
+            proc_time = time.time() - start_time
+            latency_ms = int(proc_time * 1000)
+            actual_fps = round(1.0 / proc_time, 1) if proc_time > 0 else 30.0
+
+            await websocket.send_text(json.dumps({
+                "status": "success",
+                "resolution": {"width": w, "height": h},
+                "detections": detections,
+                "latency_ms": latency_ms,
+                "fps": actual_fps
+            }))
+
+            await asyncio.sleep(0.005)
+
+    except WebSocketDisconnect:
+        print("[DEBUG] Client disconnected.")
+    except Exception as e:
+        print(f"Error: {e}")    if model is None:
         print("Loading YOLOv8 model (yolov8n.pt)...")
         # Initialize YOLOv8 Nano model (highly optimized for real-time tracking)
         model = YOLO('yolov8n.pt')
