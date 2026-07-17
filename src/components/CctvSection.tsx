@@ -106,7 +106,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           ? `${fastApiEndpoint}ws/detect` 
           : `${fastApiEndpoint}/ws/detect`;
           
-        console.log(`Connecting to EDITH Engine (YOLOv8 + ByteTrack + EasyOCR) at: ${wsUrl}`);
+        console.log(`Connecting to EDITH Engine at: ${wsUrl}`);
         setAnalysisLog(`Menghubungkan ke EDITH Engine: ${wsUrl}...`);
         
         ws = new WebSocket(wsUrl);
@@ -115,7 +115,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           setIsWsConnected(true);
           setWsClient(ws);
           wsRef.current = ws;
-          setAnalysisLog("✓ EDITH AI Engine SIAP (YOLOv8 + ByteTrack + EasyOCR)");
+          setAnalysisLog("✓ EDITH AI Engine SIAP");
           console.log("WebSocket connected to FastAPI YOLOv8 + ByteTrack + EasyOCR");
         };
         
