@@ -485,7 +485,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           MONITOR CCTV & ANALISIS DETEKSI AI
         </h2>
         <p className="text-sm text-gray-400 mt-1">
-          Pantau CCTV lalu lintas real-time dengan YOLOv8 + ByteTrack + EasyOCR. Analisis foto pelanggaran dengan mesin kognitif EDITH
+          Pantau CCTV lalu lintas real-time. Analisis foto pelanggaran dengan mesin kognitif EDITH
         </p>
       </div>
 
@@ -844,7 +844,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               <div className="flex items-center justify-between">
                 <span className="text-xs font-display font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]'}`} />
-                  EDITH ENGINE (YOLOv8 + ByteTrack + EasyOCR)
+                  EDITH ENGINE
                 </span>
                 <span className={`text-[10px] font-mono font-bold ${isWsConnected ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {isWsConnected ? '✓ TERKONEKSI' : '✗ TERPUTUS'}
@@ -881,7 +881,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   Analisis Foto Pelanggaran
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">
-                  Upload gambar atau pilih preset untuk analisis dengan YOLOv8 + EasyOCR
+                  Upload gambar
                 </p>
               </div>
               <button
@@ -953,7 +953,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   }`}
                 >
                   <Cpu size={18} className={activePreset || uploadedImageBase64 ? "animate-spin text-brand-cyan" : ""} />
-                  ANALISIS DENGAN YOLOv8 + EasyOCR
+                  Analyze
                 </button>
               )}
             </div>
