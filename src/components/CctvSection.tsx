@@ -122,6 +122,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           console.log("WebSocket connected successfully to FastAPI AI Engine");
         };
         
+        const addedWSViolations = new Set<string>();
+
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
@@ -133,6 +135,42 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               if (data.fps !== undefined) {
                 setActualFps(data.fps);
               }
+
+              // Automatically add violations from live stream to UI state if not already added
+              data.detections.forEach((det: any) => {
+                if (det.violations && det.violations.length > 0 && det.plate) {
+                  const key = `${det.plate}-${det.violations[0].name}`;
+                  if (!addedWSViolations.has(key)) {
+                    addedWSViolations.add(key);
+
+                    const fineMap: { [key: string]: number } = {
+                      "Tidak Menggunakan Helm Standar (SNI)": 250000,
+                      "Tidak Memakai Helm": 250000,
+                      "Tidak Menggunakan Sabuk Pengaman": 250000,
+                      "Melanggar Markah": 500000,
+                      "Batas Kecepatan": 500000,
+                      "Ganjil-Genap": 500000,
+                      "Overdimension Overload (ODOL)": 1000000
+                    };
+                    const vName = det.violations[0].name;
+                    const fineAmount = fineMap[vName] || det.violations[0].fineAmount || 250000;
+
+                    const newViolation: Violation = {
+                      id: `ETLE-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+                      licensePlate: det.plate,
+                      vehicleType: det.label.includes("Motor") ? "Motor" : "Mobil",
+                      vehicleModel: det.label,
+                      violationType: vName,
+                      location: selectedCamera.name,
+                      timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                      fineAmount: fineAmount,
+                      status: "Belum Bayar",
+                      ownerName: "Pemilik Terlacak Otomatis",
+                    };
+                    onAddViolation(newViolation);
+                  }
+                }
+              });
             }
           } catch (err) {
             setAnalysisLog(`Telemetry: ${event.data.substring(0, 50)}`);
