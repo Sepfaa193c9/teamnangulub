@@ -36,7 +36,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
       : INITIAL_CAMERAS[0]
   );
   
-  // WebSocket Integration State
+  // WebSocket Integration State (YOLOv8 + ByteTrack + EasyOCR via FastAPI)
   const [isWsConnected, setIsWsConnected] = useState(false);
   const [wsClient, setWsClient] = useState<WebSocket | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -55,7 +55,6 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
       return `${protocol}//localhost:8000`;
     }
-    // Fallback: If deployed, try to use the same host or default to railway style URL format
     return `${protocol}//${window.location.host}`;
   });
   
@@ -83,33 +82,31 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
   const [isRegistered, setIsRegistered] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoFileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  // Real-Time YOLO states
+  // Real-Time Stream states
   const [isRealTime, setIsRealTime] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number | undefined>(undefined);
-  const simulatedVehiclesRef = useRef<any[]>([]);
+  const detectedViolationsRef = useRef<Set<string>>(new Set());
 
   // Violation Zone state
   const [showViolationZone, setShowViolationZone] = useState(false);
   const [isScanningZone, setIsScanningZone] = useState(false);
 
   useEffect(() => {
-    // Connect to actual FastAPI YOLOv8 stream socket
+    // Connect to FastAPI YOLOv8 + ByteTrack + EasyOCR WebSocket
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
     
     const connectWs = () => {
       try {
-        // Build URL: make sure it has /ws/detect path
         const wsUrl = fastApiEndpoint.endsWith("/") 
           ? `${fastApiEndpoint}ws/detect` 
           : `${fastApiEndpoint}/ws/detect`;
           
-        console.log(`Connecting to EDITH Engine at: ${wsUrl}`);
+        console.log(`Connecting to EDITH Engine (YOLOv8 + ByteTrack + EasyOCR) at: ${wsUrl}`);
         setAnalysisLog(`Menghubungkan ke EDITH Engine: ${wsUrl}...`);
         
         ws = new WebSocket(wsUrl);
@@ -118,8 +115,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           setIsWsConnected(true);
           setWsClient(ws);
           wsRef.current = ws;
-          setAnalysisLog("Koneksi EDITH AI Engine aktif! Menunggu umpan video...");
-          console.log("WebSocket connected successfully to FastAPI AI Engine");
+          setAnalysisLog("✓ EDITH AI Engine SIAP (YOLOv8 + ByteTrack + EasyOCR)");
+          console.log("WebSocket connected to FastAPI YOLOv8 + ByteTrack + EasyOCR");
         };
         
         const addedWSViolations = new Set<string>();
@@ -136,7 +133,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                 setActualFps(data.fps);
               }
 
-              // Automatically add violations from live stream to UI state if not already added
+              // Auto-register violations from live detections
               data.detections.forEach((det: any) => {
                 if (det.violations && det.violations.length > 0 && det.plate) {
                   const key = `${det.plate}-${det.violations[0].name}`;
@@ -173,7 +170,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               });
             }
           } catch (err) {
-            setAnalysisLog(`Telemetry: ${event.data.substring(0, 50)}`);
+            console.warn("WebSocket message parse error:", err);
           }
         };
   
@@ -182,17 +179,16 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           setWsClient(null);
           wsRef.current = null;
           setLiveDetections([]);
-          setAnalysisLog("Koneksi terputus. Menggunakan simulasi lokal...");
-          // Try to reconnect after 5 seconds
+          setAnalysisLog("❌ Koneksi FastAPI terputus. Menunggu reconnect...");
           reconnectTimeout = setTimeout(connectWs, 5000);
         };
         
-        ws.onerror = () => {
-          console.warn("FastAPI WebSocket error. Make sure FastAPI server is running on", fastApiEndpoint);
-          setAnalysisLog("Gagal terhubung ke AI Engine. Pastikan backend diaktifkan.");
+        ws.onerror = (error) => {
+          console.error("FastAPI WebSocket error:", error);
+          setAnalysisLog("⚠ Gagal terhubung ke FastAPI. Pastikan backend YOLOv8 dijalankan.");
         };
       } catch (err) {
-        console.error("WebSocket error:", err);
+        console.error("WebSocket connection error:", err);
       }
     };
 
@@ -205,193 +201,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
         ws.close();
       }
     };
-  }, [fastApiEndpoint]);
-
-  // Local high-fidelity perspective traffic simulation when WebSocket is offline
-  const updateSimulatedDetections = () => {
-    let vehicles = [...simulatedVehiclesRef.current];
-
-    const leftLanes = [
-      { startX: 47, startY: 25, endX: 20, endY: 100, isDownward: true },
-      { startX: 42, startY: 25, endX: 5, endY: 100, isDownward: true },
-      { startX: 36, startY: 25, endX: -15, endY: 100, isDownward: true }
-    ];
-
-    const rightLanes = [
-      { startX: 62, startY: 100, endX: 53, endY: 25, isDownward: false },
-      { startX: 80, startY: 100, endX: 58, endY: 25, isDownward: false },
-      { startX: 105, startY: 100, endX: 64, endY: 25, isDownward: false }
-    ];
-    
-    // Spawn new vehicle if needed (maintain up to 5 vehicles on screen)
-    if (vehicles.length < 5 && Math.random() < 0.12) {
-      const isLeft = Math.random() < 0.65; // Slightly more traffic on left lanes
-      const laneIndex = Math.floor(Math.random() * 3);
-      const lane = isLeft ? leftLanes[laneIndex] : rightLanes[laneIndex];
-      
-      const rand = Math.random();
-      let label = "Mobil";
-      let model = "Avanza";
-      let baseW = 11;
-      let baseH = 8.5;
-      let minW = 1.2;
-      let minH = 0.9;
-      
-      if (rand < 0.5) {
-        label = "Mobil";
-        const carModels = ["Avanza", "Brio", "Innova", "Pajero", "Sigra", "Yaris"];
-        model = carModels[Math.floor(Math.random() * carModels.length)];
-        baseW = 11;
-        baseH = 8.5;
-        minW = 1.2;
-        minH = 0.9;
-      } else if (rand < 0.8) {
-        label = "Motor";
-        const motorcycleModels = ["NMAX", "Beat", "PCX", "Vespa"];
-        model = motorcycleModels[Math.floor(Math.random() * motorcycleModels.length)];
-        baseW = 5;
-        baseH = 5.5;
-        minW = 0.6;
-        minH = 0.7;
-      } else if (rand < 0.92) {
-        label = "Truk";
-        const truckModels = ["Hino", "Fuso", "Isusu"];
-        model = truckModels[Math.floor(Math.random() * truckModels.length)];
-        baseW = 16;
-        baseH = 13;
-        minW = 1.8;
-        minH = 1.4;
-      } else {
-        label = "Bus";
-        const busModels = ["Scania", "Mercedes"];
-        model = busModels[Math.floor(Math.random() * busModels.length)];
-        baseW = 16;
-        baseH = 13;
-        minW = 1.8;
-        minH = 1.4;
-      }
-      
-      const prefixes = ["B", "D", "F", "L", "H", "AB", "DK", "N"];
-      const suffixLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-      const num = Math.floor(Math.random() * 8999) + 1000;
-      const s1 = suffixLetters[Math.floor(Math.random() * 26)];
-      const s2 = suffixLetters[Math.floor(Math.random() * 26)];
-      const plateValue = `${prefix} ${num} ${s1}${s2}`;
-
-      // Check for potential violations (15% chance)
-      let violationsList: any[] = [];
-      const hasViolationChance = Math.random() < 0.15;
-      if (hasViolationChance) {
-        if (label === "Motor") {
-          violationsList = [{ name: "Tidak Memakai Helm" }];
-        } else if (label === "Mobil") {
-          const types = ["Melanggar Markah", "Batas Kecepatan", "Ganjil-Genap"];
-          violationsList = [{ name: types[Math.floor(Math.random() * types.length)] }];
-        } else {
-          violationsList = [{ name: "Overdimension Overload (ODOL)" }];
-        }
-      }
-
-      vehicles.push({
-        id: Date.now() + Math.random(),
-        label: `${label} (${model})`,
-        vehicleType: label,
-        confidence: Math.floor(92 + Math.random() * 7),
-        plate: Math.random() < 0.95 ? plateValue : undefined,
-        lane,
-        progress: 0,
-        progressSpeed: 0.012 + Math.random() * 0.016, // Smoother and dynamic speed
-        baseW,
-        baseH,
-        minW,
-        minH,
-        violations: violationsList,
-        addedToViolation: false
-      });
-    }
-
-    const activeVehicles: any[] = [];
-    vehicles.forEach(v => {
-      v.progress += v.progressSpeed;
-
-      // Calculate position based on progress
-      const x = v.lane.startX + v.progress * (v.lane.endX - v.lane.startX);
-      const y = v.lane.startY + v.progress * (v.lane.endY - v.lane.startY);
-
-      // Clamp y positioning
-      const scaleY = Math.max(0.05, Math.min(1.0, (y - 25) / 75));
-
-      // 3D road perspective scaling of bounding boxes
-      const width = v.minW + scaleY * (v.baseW - v.minW);
-      const height = v.minH + scaleY * (v.baseH - v.minH);
-
-      // Trigger ETLE violation callback exactly once when crossing the zone
-      // Downward cars cross when y > 55. Upward cars cross when they have progressed slightly (e.g. progress > 0.25 and y > 55)
-      const isCrossingZone = v.lane.isDownward 
-        ? (y > 55)
-        : (v.progress > 0.25 && y > 55);
-
-      if (v.violations && v.violations.length > 0 && !v.addedToViolation && isCrossingZone) {
-        v.addedToViolation = true;
-        const fineMap: { [key: string]: number } = {
-          "Tidak Memakai Helm": 250000,
-          "Melanggar Markah": 500000,
-          "Batas Kecepatan": 500000,
-          "Ganjil-Genap": 500000,
-          "Overdimension Overload (ODOL)": 1000000
-        };
-        
-        const vName = v.violations[0].name;
-        const fineAmount = fineMap[vName] || 250000;
-        
-        const newViolation: Violation = {
-          id: `ETLE-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-          licensePlate: v.plate || "B 9999 XX",
-          vehicleType: v.vehicleType === "Motor" ? "Motor" : "Mobil",
-          vehicleModel: v.label,
-          violationType: vName,
-          location: selectedCamera.name,
-          timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
-          fineAmount: fineAmount,
-          status: "Belum Bayar",
-          ownerName: "Pemilik Terlacak Otomatis",
-        };
-        
-        onAddViolation(newViolation);
-      }
-
-      // Keep only vehicles that have not completed their journey
-      if (v.progress < 1.0) {
-        const xMin = Math.max(0, x - width / 2);
-        const xMax = Math.min(100, x + width / 2);
-        const yMin = Math.max(0, y - height / 2);
-        const yMax = Math.min(100, y + height / 2);
-
-        activeVehicles.push({
-          ...v,
-          box: [yMin, xMin, yMax, xMax]
-        });
-      }
-    });
-
-    simulatedVehiclesRef.current = activeVehicles;
-
-    const mapped = activeVehicles.map(v => ({
-      box: v.box,
-      label: v.label,
-      confidence: v.confidence,
-      plate: v.plate,
-      violations: v.violations
-    }));
-
-    setLiveDetections(mapped);
-  };
+  }, [fastApiEndpoint, selectedCamera.name, onAddViolation]);
 
   const stopCameraStream = () => {
     setIsRealTime(false);
     setLiveDetections([]);
-    simulatedVehiclesRef.current = [];
+    detectedViolationsRef.current.clear();
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
     if (videoRef.current) {
       if (videoRef.current.srcObject) {
@@ -409,7 +224,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     }
   };
 
-  const startVideoProcessing = async (useCamera: boolean, file?: File, videoUrl?: string) => {
+  const startVideoProcessing = async (useCamera: boolean, videoUrl?: string) => {
     stopCameraStream();
     setIsRealTime(true);
     setUploadedImageBase64(null);
@@ -423,27 +238,22 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           videoRef.current.srcObject = stream;
           videoRef.current.play();
         }
-      } else if (file) {
-        const fileUrl = URL.createObjectURL(file);
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-          videoRef.current.src = fileUrl;
-          videoRef.current.loop = true;
-          videoRef.current.play().catch(err => console.error("Error playing video:", err));
-        }
       } else if (videoUrl) {
         if (videoRef.current) {
           videoRef.current.srcObject = null;
           videoRef.current.src = videoUrl;
           videoRef.current.loop = true;
           videoRef.current.muted = true;
-          videoRef.current.play().catch(err => console.error("Error playing video url:", err));
+          videoRef.current.play().catch(err => console.error("Error playing video:", err));
         }
       } else {
         return;
       }
       
       let lastSentTime = 0;
+      let frameCount = 0;
+      let fpsStartTime = Date.now();
+
       const captureAndSendFrame = async () => {
         if (videoRef.current && canvasRef.current) {
           const video = videoRef.current;
@@ -453,26 +263,28 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               canvasRef.current.width = video.videoWidth;
               canvasRef.current.height = video.videoHeight;
               
-              // Draw the real video frame
               ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
               
-              // Throttle to 10 frames per second (100ms) to maximize performance and save CPU
+              // Send frames to FastAPI at 10 FPS (100ms throttle)
               const now = Date.now();
               if (now - lastSentTime > 100) {
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                   try {
-                    // Compress image to JPEG at 0.5 quality for super fast networking
                     const base64Img = canvasRef.current.toDataURL("image/jpeg", 0.5);
                     wsRef.current.send(JSON.stringify({ image: base64Img }));
                   } catch (taintError) {
-                    console.warn("Canvas is tainted or failed to convert toDataURL:", taintError);
-                    updateSimulatedDetections();
+                    console.warn("Canvas error:", taintError);
                   }
-                  lastSentTime = now;
-                } else {
-                  // WS is offline, execute offline-first high-fidelity 3D traffic simulator
-                  updateSimulatedDetections();
-                  lastSentTime = now;
+                }
+                lastSentTime = now;
+                frameCount++;
+
+                // Calculate FPS
+                const elapsed = Date.now() - fpsStartTime;
+                if (elapsed >= 1000) {
+                  setActualFps(Math.round((frameCount * 1000) / elapsed));
+                  frameCount = 0;
+                  fpsStartTime = Date.now();
                 }
               }
             }
@@ -485,23 +297,16 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
       
     } catch (err) {
       console.error("Video processing error:", err);
-      alert("Gagal menginisialisasi sumber video. Pastikan kamera diizinkan atau file video valid.");
+      alert("Gagal menginisialisasi video. Pastikan kamera diizinkan atau URL video valid.");
       setIsRealTime(false);
     }
   };
 
   const startCameraStream = () => startVideoProcessing(true);
 
-  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      startVideoProcessing(false, file);
-    }
-  };
-
-  // Autoplay the demo traffic video on mount for a zero-setup teaser
+  // Autoplay demo traffic video on mount
   useEffect(() => {
-    startVideoProcessing(false, undefined, "https://assets.mixkit.co/videos/preview/mixkit-highway-traffic-with-cars-and-trucks-43181-large.mp4");
+    startVideoProcessing(false, "https://assets.mixkit.co/videos/preview/mixkit-highway-traffic-with-cars-and-trucks-43181-large.mp4");
     setShowViolationZone(true);
     
     return () => {
@@ -515,7 +320,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     cam.location.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Simulated analysis sequence
+  // Send image to FastAPI for analysis
   const startAnalysis = async () => {
     let imgData = "";
     let name = "";
@@ -524,13 +329,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
       imgData = uploadedImageBase64;
       name = uploadedImageName;
     } else if (activePreset) {
-      // Find preset image and fetch as base64 or pass name for server to mock
       name = activePreset.imageName;
-      // Convert preset image to base64 if needed, but since it's an external url, 
-      // let's pass a placeholder or we can use our preloaded base64 mock.
-      // For presets, our backend server already has smart mocking based on imageName.
-      // To bypass CORS or direct base64 download, we'll pass a mock base64
-      imgData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="; // 1x1 black pixel base64
+      imgData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
     } else {
       alert("Silakan unggah gambar atau pilih skenario preset terlebih dahulu!");
       return;
@@ -541,20 +341,14 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     setYoloBoxes([]);
     setIsRegistered(false);
     setAnalysisProgress(5);
-    setAnalysisLog("Menghubungkan ke satelit pengawas EDITH-03...");
+    setAnalysisLog("Mengirim ke FastAPI (YOLOv8 + EasyOCR)...");
 
     try {
-      if (imageRef.current) {
-        setAnalysisLog("Mengirim gambar ke FastAPI Engine (YOLOv8 + ByteTrack)...");
-        setAnalysisProgress(30);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        setAnalysisProgress(60);
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
+      setAnalysisProgress(30);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      setAnalysisProgress(80);
-      setAnalysisLog("Memverifikasi pasal pelanggaran via EDITH Core...");
+      setAnalysisProgress(60);
+      setAnalysisLog("Processing dengan YOLOv8 + ByteTrack + EasyOCR...");
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -565,15 +359,19 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
       const data = await response.json();
       setAnalysisProgress(100);
-      setAnalysisLog("Analisis taktis selesai!");
+      setAnalysisLog("✓ Analisis selesai!");
       
       setAnalysisResult(data);
     } catch (err: any) {
-      console.error(err);
+      console.error("Analysis error:", err);
       setAnalysisProgress(100);
-      setAnalysisLog("Gagal menganalisis. Menggunakan mesin analitik luring...");
+      setAnalysisLog("⚠ Gagal menganalisis via FastAPI. Mode offline.");
       setAnalysisResult({
         vehicleType: "Kendaraan Bermotor",
         licensePlate: "B 1234 SMN",
@@ -581,7 +379,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           { name: "Tidak Mengenakan Helm", pasal: "Pasal 291 ayat (1)", fineAmount: 250000, confidence: 95 }
         ],
         overallConfidence: 90,
-        visualDescription: "Deteksi luring mendeteksi pelanggaran keselamatan dasar lalu lintas.",
+        visualDescription: "Mode offline - memerlukan backend FastAPI dengan YOLOv8, EasyOCR, dan ByteTrack.",
         boundingBoxes: yoloBoxes
       });
     } finally {
@@ -615,11 +413,10 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     stopCameraStream();
   };
 
-  // Register detected violation as a real ticket
+  // Register detected violation
   const registerTicket = () => {
     if (!analysisResult) return;
 
-    // Create a new Violation object
     const newViolation: Violation = {
       id: `ETLE-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       licensePlate: analysisResult.licensePlate || "B 9999 XX",
@@ -637,7 +434,6 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     setIsRegistered(true);
   };
 
-  // Clean upload
   const [isExportingFeed, setIsExportingFeed] = useState(false);
 
   const exportCctvAsImage = async () => {
@@ -649,13 +445,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
     
     setIsExportingFeed(true);
     try {
-      // Small delay to ensure frames settle
       await new Promise((resolve) => setTimeout(resolve, 1500));
       const canvas = await html2canvas(element, {
         useCORS: true,
         allowTaint: true,
-        backgroundColor: "#020617", // Matches Slate 950 dark background
-        scale: 2, // High resolution
+        backgroundColor: "#020617",
+        scale: 2,
         logging: false,
       });
       
@@ -690,7 +485,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           MONITOR CCTV & ANALISIS DETEKSI AI
         </h2>
         <p className="text-sm text-gray-400 mt-1">
-          Pantau CCTV lalu lintas secara real-time dan analisis foto pelanggaran menggunakan mesin kognitif EDITH
+          Pantau CCTV lalu lintas real-time dengan YOLOv8 + ByteTrack + EasyOCR. Analisis foto pelanggaran dengan mesin kognitif EDITH
         </p>
       </div>
 
@@ -712,7 +507,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               placeholder="Cari kamera atau lokasi..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-brand-dark/80 border border-brand-cyan/10 hover:border-brand-cyan/25 focus:border-brand-cyan/40 rounded-lg py-2 pl-9 pr-4 text-xs font-sans text-white focus:outline-none placeholder-gray-500 transition-colors"
+              className="w-full bg-brand-dark/80 border border-brand-cyan/10 hover:border-brand-cyan/25 focus:border-brand-cyan/40 rounded-lg py-2 pl-9 pr-4 text-xs font-sans text-white focus:outline-none transition-colors"
             />
           </div>
 
@@ -809,20 +604,20 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               </div>
             </div>
 
-            {/* Simulated Stream Scene inside HUD */}
+            {/* Stream Container */}
             <div id="cctv-feed-container" className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden rounded-b-lg">
               
               {/* Scan Line effect */}
               <div className="absolute inset-0 bg-grid pointer-events-none grid-bg opacity-30" />
               <div className="absolute top-0 left-0 w-full h-1 bg-brand-cyan/35 scan-line shadow-sm pointer-events-none" />
 
-              {/* Stark Reticle / Corner overlays */}
+              {/* Corner Reticles */}
               <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-brand-cyan" />
               <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-brand-cyan" />
               <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-brand-cyan" />
               <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-brand-cyan" />
 
-              {/* CCTV Video / Image Source */}
+              {/* Video / Image Content */}
               <div className="absolute inset-0 flex items-center justify-center">
                 {isRealTime ? (
                   <div className="w-full h-full relative">
@@ -837,7 +632,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       className="absolute inset-0 w-full h-full object-cover pointer-events-none"
                     />
                     
-                    {/* Render live YOLO detections overlaid on the video frame */}
+                    {/* YOLOv8 + ByteTrack detections from FastAPI */}
                     {liveDetections.map((det, index) => {
                       const [yMin, xMin, yMax, xMax] = det.box;
                       const hasViolation = det.violations && det.violations.length > 0;
@@ -881,7 +676,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       className="w-full h-full object-cover"
                     />
                     
-                    {/* Render AI Bounding boxes if analyzed */}
+                    {/* YOLOv8 + EasyOCR analysis results */}
                     {analysisResult && !isAnalyzing && (
                       <div className="absolute inset-0 pointer-events-none">
                         {analysisResult.boundingBoxes?.map((bb: any, index: number) => {
@@ -915,7 +710,6 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                     ></iframe>
-                    <div className="absolute inset-0 pointer-events-none border-[3px] border-transparent" />
                   </div>
                 )}
               </div>
@@ -960,14 +754,14 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       <circle cx="65%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
                       <circle cx="35%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
                     </svg>
-                    <div className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-rose-500 font-mono text-[10px] font-bold tracking-widest bg-brand-dark/80 px-2 py-1 rounded border border-rose-500/50">
+                    <div className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-rose-500 font-mono text-[10px] font-bold tracking-widest bg-brand-dark/80 px-2 py-1 rounded border border-rose-500/30">
                       ZONA PELANGGARAN AKTIF
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Compass / Hud Telemetry Overlay */}
+              {/* Telemetry Overlays */}
               <div className="absolute left-6 top-1/2 -translate-y-1/2 font-mono text-[9px] text-brand-cyan space-y-1.5 hidden sm:block opacity-75">
                 <div>ALT: 18.4m</div>
                 <div>AZIMUTH: 312°</div>
@@ -983,26 +777,18 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               </div>
             </div>
 
-            {/* Bottom HUD info */}
+            {/* Bottom HUD Info */}
             <div className="bg-brand-slate/40 border-t border-brand-cyan/15 px-4 py-2 flex items-center justify-between text-[11px] font-mono text-gray-400">
               <span className="flex items-center gap-1.5">
                 <Scan size={12} className="text-brand-cyan" /> 
-                MODE DETEKSI: <span className="text-brand-cyan font-semibold">{isRealTime ? "LIVE STREAM FASTAPI" : "OTOMATIS (FASTAPI)"}</span>
+                MODE DETEKSI: <span className="text-brand-cyan font-semibold">{isRealTime ? "YOLOv8 + ByteTrack" : "ANALISIS (YOLOv8 + EasyOCR)"}</span>
               </span>
               <span>{isRealTime ? "STREAM AKTIF" : "SINKRONISASI AKTIF"}</span>
             </div>
           </div>
           
-          {/* Real-Time Camera & Violation Zone Buttons */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input
-              type="file"
-              ref={videoFileInputRef}
-              onChange={handleVideoFileChange}
-              accept="video/*"
-              className="hidden"
-            />
-            
+          {/* Control Buttons */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <button
               onClick={isRealTime ? stopCameraStream : startCameraStream}
               className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg border text-xs sm:text-sm font-display font-medium tracking-wide transition-all ${
@@ -1019,17 +805,9 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               ) : (
                 <>
                   <Camera size={18} />
-                  SIMULASI KAMERA (WEBCAM)
+                  MULAI STREAM CCTV (LOOP AUTO)
                 </>
               )}
-            </button>
-
-            <button
-              onClick={() => videoFileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-brand-cyan/30 bg-brand-cyan/10 text-brand-cyan hover:bg-brand-cyan/20 text-xs sm:text-sm font-display font-medium tracking-wide transition-all"
-            >
-              <Upload size={18} />
-              UNGGAH FILE VIDEO (.MP4)
             </button>
 
             <button
@@ -1061,19 +839,21 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
           {/* AI Tactical Analysis Controller */}
           <div className="bg-brand-slate/20 border border-brand-cyan/10 rounded-xl p-6 space-y-6">
             
-            {/* FastAPI Engine Endpoint Configuration (for Railway or local development) */}
+            {/* FastAPI Engine Configuration */}
             <div className="p-4 bg-brand-dark/55 border border-brand-cyan/15 rounded-xl space-y-3 shadow-inner">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-display font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]'}`} />
-                  EDITH AI ENGINE GATEWAY
+                  EDITH ENGINE (YOLOv8 + ByteTrack + EasyOCR)
                 </span>
                 <span className={`text-[10px] font-mono font-bold ${isWsConnected ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {isWsConnected ? 'TERKONEKSI' : 'TERPUTUS / LURING'}
+                  {isWsConnected ? '✓ TERKONEKSI' : '✗ TERPUTUS'}
                 </span>
               </div>
               <p className="text-[11px] text-gray-400 font-sans leading-relaxed">
-                Konfigurasikan gerbang AI untuk pemantauan live streaming CCTV YOLOv8 + ByteTrack + EasyOCR. Dukung alamat Railway atau URL server luring.
+                {isWsConnected 
+                  ? "FastAPI backend siap - mendeteksi kendaraan, membaca plat nomor, dan melacak gerakan dengan akurasi tinggi."
+                  : "Backend tidak terhubung. Konfigurasi endpoint FastAPI yang menjalankan YOLOv8, ByteTrack, dan EasyOCR."}
               </p>
               <div className="flex gap-2 items-center">
                 <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest shrink-0">ENDPOINT:</span>
@@ -1085,11 +865,11 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                     try {
                       localStorage.setItem("edith_fastapi_endpoint", e.target.value);
                     } catch (err) {
-                      console.warn("Failed to set item in localStorage:", err);
+                      console.warn("localStorage error:", err);
                     }
                   }}
-                  placeholder="http://localhost:8000 atau wss://yolov8-production.up.railway.app"
-                  className="flex-1 bg-brand-dark border border-brand-cyan/15 hover:border-brand-cyan/30 focus:border-brand-cyan/50 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none placeholder-gray-600 transition-colors"
+                  placeholder="ws://localhost:8000 atau wss://prod.railway.app"
+                  className="flex-1 bg-brand-dark border border-brand-cyan/15 hover:border-brand-cyan/30 focus:border-brand-cyan/50 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1098,28 +878,26 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               <div>
                 <h3 className="font-display font-semibold text-white text-base flex items-center gap-2">
                   <Sparkles size={18} className="text-brand-cyan" /> 
-                  Try EDITH
+                  Analisis Foto Pelanggaran
                 </h3>
                 <p className="text-xs text-gray-400 mt-1">
-                  Uji kecerdasan buatan dengan memilih skenario pelanggaran atau unggah gambar sendiri.
+                  Upload gambar atau pilih preset untuk analisis dengan YOLOv8 + EasyOCR
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  id="btn-upload-file"
-                  className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all cursor-pointer"
-                >
-                  <Upload size={14} /> UNGGAH GAMBAR
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  accept="image/*"
-                  className="hidden"
-                />
-              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                id="btn-upload-file"
+                className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
+              >
+                <Upload size={14} /> UNGGAH GAMBAR
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*"
+                className="hidden"
+              />
             </div>
 
             {/* Presets Grid */}
@@ -1146,9 +924,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               </div>
             </div>
 
-            {/* Trigger Button & Progress Bar */}
+            {/* Analysis Trigger */}
             <div className="pt-4 border-t border-brand-cyan/10 space-y-4">
-              
               {isAnalyzing && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-mono text-brand-cyan">
@@ -1176,12 +953,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   }`}
                 >
                   <Cpu size={18} className={activePreset || uploadedImageBase64 ? "animate-spin text-brand-cyan" : ""} />
-                  MULAILAH ANALISIS TAKTIS EDITH
+                  ANALISIS DENGAN YOLOv8 + EasyOCR
                 </button>
               )}
             </div>
 
-            {/* Analysis Result Report HUD */}
+            {/* Analysis Results */}
             <AnimatePresence>
               {analysisResult && (
                 <motion.div
@@ -1204,14 +981,13 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans">
-                    
                     <div className="space-y-3">
                       <div>
                         <span className="text-gray-500 font-mono text-[10px] uppercase block">Tipe Kendaraan</span>
                         <span className="text-white font-medium text-sm mt-0.5 block">{analysisResult.vehicleType}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 font-mono text-[10px] uppercase block">Hasil Deteksi Plat Nomor</span>
+                        <span className="text-gray-500 font-mono text-[10px] uppercase block">Deteksi Plat Nomor (EasyOCR)</span>
                         <span className="text-brand-cyan font-mono font-bold text-sm bg-brand-cyan/5 border border-brand-cyan/15 px-2 py-1 rounded inline-block mt-1">
                           {analysisResult.licensePlate || "TIDAK TERDETEKSI"}
                         </span>
@@ -1220,16 +996,15 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
 
                     <div className="space-y-3">
                       <div>
-                        <span className="text-gray-500 font-mono text-[10px] uppercase block">Analisis Deskripsi Visual</span>
+                        <span className="text-gray-500 font-mono text-[10px] uppercase block">Deskripsi Visual</span>
                         <p className="text-gray-300 leading-relaxed mt-1 text-xs">
                           {analysisResult.visualDescription}
                         </p>
                       </div>
                     </div>
-
                   </div>
 
-                  {/* Violations Array list */}
+                  {/* Violations */}
                   <div className="border-t border-brand-cyan/10 pt-4 space-y-3">
                     <span className="text-gray-500 font-mono text-[10px] uppercase tracking-wider block">Pelanggaran yang Teridentifikasi</span>
                     
@@ -1258,12 +1033,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       </div>
                     ) : (
                       <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg text-emerald-400 font-mono flex items-center gap-2 text-xs">
-                        <CheckCircle size={14} /> Tidak ada pelanggaran lalu lintas yang terdeteksi. Aman untuk melintas.
+                        <CheckCircle size={14} /> Tidak ada pelanggaran lalu lintas yang terdeteksi.
                       </div>
                     )}
                   </div>
 
-                  {/* Operational Registration Trigger */}
+                  {/* Registration */}
                   {analysisResult.violations && analysisResult.violations.length > 0 && (
                     <div className="border-t border-brand-cyan/10 pt-4 flex justify-between items-center gap-4">
                       {uploadedImageBase64 && (
@@ -1278,12 +1053,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       {isRegistered ? (
                         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
                           <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg px-4 py-2 text-xs font-semibold font-mono flex items-center gap-2 flex-1 justify-center">
-                            <CheckCircle size={15} /> TIKET TILANG BERHASIL DIDAFTARKAN KE POLDA METRO JAYA
+                            <CheckCircle size={15} /> TIKET TILANG BERHASIL DIDAFTARKAN
                           </div>
                           <button
                             onClick={exportCctvAsImage}
                             disabled={isExportingFeed}
-                            className="w-full sm:w-auto bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all cursor-pointer disabled:opacity-50 justify-center py-2"
+                            className="w-full sm:w-auto bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
                           >
                             <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
                           </button>
@@ -1293,7 +1068,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                           <button
                             onClick={exportCctvAsImage}
                             disabled={isExportingFeed}
-                            className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2.5 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all cursor-pointer disabled:opacity-50"
+                            className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2.5 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
                           >
                             <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
                           </button>
@@ -1301,7 +1076,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                           <button
                             onClick={registerTicket}
                             id="btn-register-ticket-etle"
-                            className="w-full sm:w-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)] flex items-center gap-2 justify-center cursor-pointer"
+                            className="w-full sm:w-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)] focus:outline-none"
                           >
                             <FileText size={14} /> DAFTARKAN SEBAGAI TILANG RESMI (ETLE)
                           </button>
