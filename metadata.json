@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Edith Enforcement",
+  "description": "Dashboard Penegakan Hukum Lalu Lintas Elektronik (ETLE) yang Modern, Responsif, dan Interaktif",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
