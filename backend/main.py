@@ -107,7 +107,6 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"Initialization warning: {init_err}")
 
     # Track plate numbers we already logged to avoid double entries in same session
-    # Track plate numbers we already logged to avoid double entries in same session
     processed_plates = set()
     # Cache to store plate read results per track ID to avoid running heavy OCR per frame
     plate_cache = {}
@@ -149,7 +148,6 @@ async def websocket_endpoint(websocket: WebSocket):
             
             # 1. Run YOLOv8 Tracking with ByteTrack
             yolo_model = get_yolo_model()
-            # COCO classes of interest: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck)
             results = yolo_model.track(
                 frame, 
                 persist=True, 
@@ -180,49 +178,57 @@ async def websocket_endpoint(websocket: WebSocket):
                         xmin, ymin, xmax, ymax = max(0, xmin), max(0, ymin), min(w, xmax), min(h, ymax)
                         vehicle_crop = frame[ymin:ymax, xmin:xmax]
 
+                        # ==========================================
+                        # PERBAIKAN LOGIKA DETEKSI PLAT & CACHING
+                        # ==========================================
                         plate_text = ""
-                        
-                        # Fetch from cache first
-                        if track_id is not None and track_id in plate_cache:
-                            plate_text = plate_cache[track_id]
-                        else:
-                            attempts = ocr_attempts.get(track_id, 0) if track_id is not None else 0
-                            
-                            # Only attempt real OCR on every 8th frame and if under 3 attempts to save CPU
-                            if track_id is not None and attempts < 3 and frame_count % 8 == 0 and vehicle_crop.size > 0 and conf > 0.45:
-                                ocr_attempts[track_id] = attempts + 1
-                                # Crop the lower half of the vehicle where plates usually are located to speed up OCR
-                                crop_h, crop_w, _ = vehicle_crop.shape
-                                plate_roi = vehicle_crop[int(crop_h * 0.45):, :]
+                        if track_id is not None:
+                            # Jika plat nomor aslinya sudah pernah terbaca dan ada di cache
+                            if track_id in plate_cache:
+                                plate_text = plate_cache[track_id]
+                            else:
+                                attempts = ocr_attempts.get(track_id, 0)
                                 
-                                if plate_roi.size > 0:
-                                    try:
-                                        ocr_reader = get_easyocr_reader()
-                                        ocr_res = ocr_reader.readtext(plate_roi, detail=0)
-                                        parsed_plate = parse_indonesian_plate(ocr_res)
-                                        if parsed_plate:
-                                            plate_text = parsed_plate
-                                            plate_cache[track_id] = parsed_plate
-                                    except Exception as ocr_err:
-                                        print(f"OCR execution warning: {ocr_err}")
-                            
-                            # Deterministic fallback plate if we can't read it but tracking is active
-                            # This ensures offline-first robustness and removes "unreadable" plate lag
-                            if not plate_text and track_id is not None:
-                                prefixes = ["B", "D", "F", "L", "H", "AB", "DK", "N"]
-                                prefix = prefixes[track_id % len(prefixes)]
-                                num = (track_id * 179) % 8999 + 1000
-                                suffix_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                s1 = suffix_chars[(track_id * 3) % 26]
-                                s2 = suffix_chars[(track_id * 7) % 26]
-                                plate_text = f"{prefix} {num} {s1}{s2}"
-                                plate_cache[track_id] = plate_text
+                                # Coba jalankan OCR asli maksimal 3 kali, dilakukan setiap kelipatan 4 frame agar hemat CPU
+                                if attempts < 3 and frame_count % 4 == 0 and vehicle_crop.size > 0 and conf > 0.45:
+                                    ocr_attempts[track_id] = attempts + 1
+                                    crop_h, crop_w, _ = vehicle_crop.shape
+                                    # Crop bagian bawah kendaraan (area plat)
+                                    plate_roi = vehicle_crop[int(crop_h * 0.45):, :]
+                                    
+                                    if plate_roi.size > 0:
+                                        try:
+                                            ocr_reader = get_easyocr_reader()
+                                            ocr_res = ocr_reader.readtext(plate_roi, detail=0)
+                                            parsed_plate = parse_indonesian_plate(ocr_res)
+                                            if parsed_plate:
+                                                plate_text = parsed_plate
+                                                plate_cache[track_id] = parsed_plate # Simpan plat asli di cache
+                                        except Exception as ocr_err:
+                                            print(f"OCR execution warning: {ocr_err}")
+                                
+                                # Jika OCR belum berhasil membaca plat asli
+                                if not plate_text:
+                                    if attempts >= 3:
+                                        # Jika sudah 3 kali mencoba dan tetap gagal, baru buat plat fallback tiruan
+                                        prefixes = ["B", "D", "F", "L", "H", "AB", "DK", "N"]
+                                        prefix = prefixes[track_id % len(prefixes)]
+                                        num = (track_id * 179) % 8999 + 1000
+                                        suffix_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                        s1 = suffix_chars[(track_id * 3) % 26]
+                                        s2 = suffix_chars[(track_id * 7) % 26]
+                                        fallback_plate = f"{prefix} {num} {s1}{s2}"
+                                        
+                                        plate_cache[track_id] = fallback_plate # Kunci ke cache agar tidak membuang CPU untuk OCR lagi
+                                        plate_text = fallback_plate
+                                    else:
+                                        # Tampilkan status sedang membaca saat proses deteksi/antre frame berjalan
+                                        plate_text = "Membaca..."
+                        # ==========================================
 
-                        # Simulated Violation logic for demonstration/operator testing:
-                        # If a motorcycle rider is detected, or based on tracking ID patterns
+                        # Simulated Violation logic
                         violations = []
                         if cls_id == 3: # Motorcycle
-                            # Let's say there's a certain probability of No Helmet or crossing boundary
                             if track_id and track_id % 7 == 0:
                                 violations.append({
                                     "name": "Tidak Menggunakan Helm Standar (SNI)",
@@ -238,11 +244,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
 
                         # If we have a plate and a violation, log to database
-                        if plate_text and violations and plate_text not in processed_plates:
+                        # Pastikan tidak mengirim data jika status plat masih "Membaca..."
+                        if plate_text and plate_text != "Membaca..." and violations and plate_text not in processed_plates:
                             db_client = get_supabase()
                             if db_client:
                                 try:
-                                    # Insert ticket directly to Supabase Violations
                                     db_client.table("violations").insert({
                                         "licensePlate": plate_text,
                                         "vehicleType": "Motor" if cls_id == 3 else "Mobil",
@@ -259,7 +265,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                     print(f"Supabase write warning: {db_err}")
 
                         # Normalized bounding box for frontend canvas rendering
-                        # [yMin, xMin, yMax, xMax] as percentages (0 to 100)
                         yolo_box = [
                             round((ymin / h) * 100, 1),
                             round((xmin / w) * 100, 1),
