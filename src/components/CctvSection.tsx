@@ -21,6 +21,7 @@ import SOSButton from "./SOSButton";
 import html2canvas from "html2canvas";
 
 import { supabase } from "../lib/supabase";
+import { motion, AnimatePresence } from "motion/react";
 
 interface CctvSectionProps {
   onAddViolation: (violation: Violation) => void;
@@ -773,6 +774,16 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
             {/* Simulated Stream Scene inside HUD */}
             <div id="cctv-feed-container" className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden rounded-b-lg">
               
+              {/* Scan Line effect */}
+              <div className="absolute inset-0 bg-grid pointer-events-none grid-bg opacity-30" />
+              <div className="absolute top-0 left-0 w-full h-1 bg-brand-cyan/35 scan-line shadow-sm pointer-events-none" />
+
+              {/* Stark Reticle / Corner overlays */}
+              <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-brand-cyan" />
+              <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-brand-cyan" />
+              <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-brand-cyan" />
+              <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-brand-cyan" />
+
               {/* CCTV Video / Image Source */}
               <div className="absolute inset-0 flex items-center justify-center">
                 {isRealTime ? (
@@ -872,33 +883,66 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               </div>
 
               {/* Violation Zone Overlay */}
-              {isScanningZone ? (
-                <div className="absolute inset-0 pointer-events-none z-20 flex flex-col items-center justify-center bg-brand-dark/40 overflow-hidden">
-                  <div className="w-full h-1 bg-brand-cyan shadow-[0_0_20px_rgba(34,211,238,1)] absolute animate-pulse top-1/2" />
-                  <div className="text-brand-cyan font-mono text-xs font-bold tracking-widest bg-brand-dark/80 px-3 py-1.5 rounded border border-brand-cyan/50 animate-pulse">
-                    MENGKALIBRASI ZONA JALAN...
-                  </div>
-                </div>
-              ) : showViolationZone && (
-                <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
-                  <svg width="100%" height="100%" className="absolute inset-0">
-                    <polygon 
-                      points="15%,90% 85%,90% 65%,40% 35%,40%" 
-                      fill="rgba(225, 29, 72, 0.2)" 
-                      stroke="rgba(225, 29, 72, 0.8)" 
-                      strokeWidth="2" 
-                      strokeDasharray="6 4"
+              <AnimatePresence>
+                {isScanningZone ? (
+                  <motion.div
+                    key="scanning"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 pointer-events-none z-20 flex flex-col items-center justify-center bg-brand-dark/40 overflow-hidden"
+                  >
+                    <motion.div 
+                      className="w-full h-1 bg-brand-cyan shadow-[0_0_20px_rgba(34,211,238,1)] absolute"
+                      animate={{ top: ["0%", "100%", "0%"] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
                     />
-                    <circle cx="15%" cy="90%" r="4" fill="rgba(225, 29, 72, 1)" />
-                    <circle cx="85%" cy="90%" r="4" fill="rgba(225, 29, 72, 1)" />
-                    <circle cx="65%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
-                    <circle cx="35%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
-                  </svg>
-                  <div className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-rose-500 font-mono text-[10px] font-bold tracking-widest bg-brand-dark/80 px-2 py-1 rounded border border-rose-500/50">
-                    ZONA PELANGGARAN AKTIF
-                  </div>
-                </div>
-              )}
+                    <div className="text-brand-cyan font-mono text-xs font-bold tracking-widest bg-brand-dark/80 px-3 py-1.5 rounded border border-brand-cyan/50 animate-pulse">
+                      MENGKALIBRASI ZONA JALAN...
+                    </div>
+                  </motion.div>
+                ) : showViolationZone && (
+                  <motion.div
+                    key="zone"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center"
+                  >
+                    <svg width="100%" height="100%" className="absolute inset-0">
+                      <polygon 
+                        points="15%,90% 85%,90% 65%,40% 35%,40%" 
+                        fill="rgba(225, 29, 72, 0.2)" 
+                        stroke="rgba(225, 29, 72, 0.8)" 
+                        strokeWidth="2" 
+                        strokeDasharray="6 4"
+                      />
+                      <circle cx="15%" cy="90%" r="4" fill="rgba(225, 29, 72, 1)" />
+                      <circle cx="85%" cy="90%" r="4" fill="rgba(225, 29, 72, 1)" />
+                      <circle cx="65%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
+                      <circle cx="35%" cy="40%" r="4" fill="rgba(225, 29, 72, 1)" />
+                    </svg>
+                    <div className="absolute top-[45%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-rose-500 font-mono text-[10px] font-bold tracking-widest bg-brand-dark/80 px-2 py-1 rounded border border-rose-500/50">
+                      ZONA PELANGGARAN AKTIF
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Compass / Hud Telemetry Overlay */}
+              <div className="absolute left-6 top-1/2 -translate-y-1/2 font-mono text-[9px] text-brand-cyan space-y-1.5 hidden sm:block opacity-75">
+                <div>ALT: 18.4m</div>
+                <div>AZIMUTH: 312°</div>
+                <div>TILT: -14.2°</div>
+                <div>RANGE: 45m</div>
+              </div>
+
+              <div className="absolute right-6 top-1/2 -translate-y-1/2 font-mono text-[9px] text-brand-cyan text-right space-y-1.5 hidden sm:block opacity-75">
+                <div>LAT: {selectedCamera?.lat || "0.0"}</div>
+                <div>LNG: {selectedCamera?.lng || "0.0"}</div>
+                <div>SATELLITE: STARK-03</div>
+                <div>LUX: 3400</div>
+              </div>
             </div>
 
             {/* Bottom HUD info */}
@@ -1100,10 +1144,15 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
             </div>
 
             {/* Analysis Result Report HUD */}
-            {analysisResult && (
-              <div
-                className="bg-brand-dark/90 border border-brand-cyan/30 rounded-lg p-5 mt-5 space-y-4 glow-border"
-              >
+            <AnimatePresence>
+              {analysisResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 15 }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  className="bg-brand-dark/90 border border-brand-cyan/30 rounded-lg p-5 mt-5 space-y-4 glow-border"
+                >
                 <div className="flex items-center justify-between border-b border-brand-cyan/10 pb-3">
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="text-rose-500" size={20} />
@@ -1223,8 +1272,9 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                     </div>
                   )}
 
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
           </div>
 
