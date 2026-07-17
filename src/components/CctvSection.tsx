@@ -306,7 +306,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
 
   // Autoplay demo traffic video on mount
   useEffect(() => {
-    startVideoProcessing(false, "/result_vehicle.mp4");
+    startVideoProcessing(false, "/result_vehicle (2).mp4");
     setShowViolationZone(true);
     
     return () => {
@@ -507,7 +507,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               placeholder="Cari kamera atau lokasi..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-brand-dark/80 border border-brand-cyan/10 hover:border-brand-cyan/25 focus:border-brand-cyan/40 rounded-lg py-2 pl-9 pr-4 text-xs font-sans text-white focus:outline-none transition-colors"
+              className="w-full bg-brand-dark/80 border border-brand-cyan/10 hover:border-brand-cyan/25 focus:border-brand-cyan/40 rounded-lg py-2 pl-9 pr-4 text-xs font-sans text-white focus:outline-none"
             />
           </div>
 
@@ -704,8 +704,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                 ) : (
                   <div className="w-full h-full relative">
                     <video
-                      src="/result_vehicle.mp4"
-                      title="result_vehicle.mp4"
+                      src="/result_vehicle (2).mp4"
+                      title="result_vehicle (2).mp4"
                       className="w-full h-full object-cover"
                       autoPlay
                       muted
@@ -870,7 +870,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                     }
                   }}
                   placeholder="ws://localhost:8000 atau wss://prod.railway.app"
-                  className="flex-1 bg-brand-dark border border-brand-cyan/15 hover:border-brand-cyan/30 focus:border-brand-cyan/50 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none transition-colors"
+                  className="flex-1 bg-brand-dark border border-brand-cyan/15 hover:border-brand-cyan/30 focus:border-brand-cyan/50 rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none"
                 />
               </div>
             </div>
@@ -888,7 +888,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
               <button
                 onClick={() => fileInputRef.current?.click()}
                 id="btn-upload-file"
-                className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
+                className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all"
               >
                 <Upload size={14} /> UNGGAH GAMBAR
               </button>
@@ -1059,7 +1059,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                           <button
                             onClick={exportCctvAsImage}
                             disabled={isExportingFeed}
-                            className="w-full sm:w-auto bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
+                            className="w-full sm:w-auto bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 transition-all"
                           >
                             <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
                           </button>
@@ -1069,7 +1069,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                           <button
                             onClick={exportCctvAsImage}
                             disabled={isExportingFeed}
-                            className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2.5 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-colors"
+                            className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2.5 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all"
                           >
                             <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
                           </button>
@@ -1077,7 +1077,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                           <button
                             onClick={registerTicket}
                             id="btn-register-ticket-etle"
-                            className="w-full sm:w-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)] focus:outline-none"
+                            className="w-full sm:w-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.2)] focus:outline-none"
                           >
                             <FileText size={14} /> DAFTARKAN SEBAGAI TILANG RESMI (ETLE)
                           </button>
