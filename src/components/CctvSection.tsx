@@ -306,7 +306,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
 
   // Autoplay demo traffic video on mount
   useEffect(() => {
-    startVideoProcessing(false, "/result_vehicle (2).mp4");
+    startVideoProcessing(false, "result_vehicle (2).mp4");
     setShowViolationZone(true);
     
     return () => {
