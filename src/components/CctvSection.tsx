@@ -12,12 +12,14 @@ import {
   Scan,
   Sparkles,
   ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { CctvCamera, Violation, AnalysisResult } from "../types";
 import { INITIAL_CAMERAS, SAMPLE_PRESETS } from "../data";
 import SOSButton from "./SOSButton";
+import html2canvas from "html2canvas";
 
 import { supabase } from "../lib/supabase";
 
@@ -39,6 +41,8 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
   const [wsClient, setWsClient] = useState<WebSocket | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [liveDetections, setLiveDetections] = useState<any[]>([]);
+  const [inferenceLatency, setInferenceLatency] = useState<number | null>(null);
+  const [actualFps, setActualFps] = useState<number | null>(null);
   const [fastApiEndpoint, setFastApiEndpoint] = useState<string>(() => {
     const saved = localStorage.getItem("edith_fastapi_endpoint");
     if (saved) return saved;
@@ -118,6 +122,12 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
             const data = JSON.parse(event.data);
             if (data.status === "success" && data.detections) {
               setLiveDetections(data.detections);
+              if (data.latency_ms !== undefined) {
+                setInferenceLatency(data.latency_ms);
+              }
+              if (data.fps !== undefined) {
+                setActualFps(data.fps);
+              }
             }
           } catch (err) {
             setAnalysisLog(`Telemetry: ${event.data.substring(0, 50)}`);
@@ -580,6 +590,40 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
   };
 
   // Clean upload
+  const [isExportingFeed, setIsExportingFeed] = useState(false);
+
+  const exportCctvAsImage = async () => {
+    const element = document.getElementById("cctv-feed-container");
+    if (!element) {
+      alert("Feed CCTV tidak ditemukan.");
+      return;
+    }
+    
+    setIsExportingFeed(true);
+    try {
+      // Small delay to ensure frames settle
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const canvas = await html2canvas(element, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#020617", // Matches Slate 950 dark background
+        scale: 2, // High resolution
+        logging: false,
+      });
+      
+      const image = canvas.toDataURL("image/png", 1.0);
+      const link = document.createElement("a");
+      link.download = `CCTV_CAPTURE_${selectedCamera.id}_${Date.now()}.png`;
+      link.href = image;
+      link.click();
+    } catch (error) {
+      console.error("Error exporting CCTV:", error);
+      alert("Gagal mengekspor tangkapan CCTV. Silakan coba lagi.");
+    } finally {
+      setIsExportingFeed(false);
+    }
+  };
+
   const clearUpload = () => {
     setUploadedImageBase64(null);
     setUploadedImageName("");
@@ -695,14 +739,30 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                 <span className="text-gray-400 font-medium">|</span>
                 <span className="text-white font-medium">{selectedCamera.name}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-500">FPS: 30.0</span>
-                <span className="text-emerald-400">SECURE LINK</span>
+              <div className="flex items-center gap-3">
+                {inferenceLatency !== null && (
+                  <span className="text-[10px] text-brand-cyan font-semibold">
+                    LATENCY: {inferenceLatency}ms
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-400">
+                  FPS: {actualFps !== null ? actualFps : "30.0"}
+                </span>
+                <span className="text-emerald-400 font-bold">SECURE LINK</span>
+                <span className="text-gray-500">|</span>
+                <button
+                  onClick={exportCctvAsImage}
+                  disabled={isExportingFeed}
+                  className="text-gray-400 hover:text-brand-cyan transition-colors cursor-pointer disabled:opacity-40"
+                  title="Ekspor Tangkapan Layar CCTV"
+                >
+                  <Download size={14} className={isExportingFeed ? "animate-pulse" : ""} />
+                </button>
               </div>
             </div>
 
             {/* Simulated Stream Scene inside HUD */}
-            <div className="h-96 relative bg-slate-900 flex items-center justify-center overflow-hidden">
+            <div id="cctv-feed-container" className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden">
               
               {/* Scan Line effect */}
               <div className="absolute inset-0 bg-grid pointer-events-none grid-bg opacity-30" />
@@ -720,13 +780,13 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                   <div className="w-full h-full relative">
                     <video
                       ref={videoRef}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-fill"
                       playsInline
                       muted
                     />
                     <canvas
                       ref={canvasRef}
-                      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                      className="absolute inset-0 w-full h-full object-fill pointer-events-none"
                     />
                     
                     {/* Render live YOLO detections overlaid on the video frame */}
@@ -770,7 +830,7 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       crossOrigin="anonymous"
                       src={uploadedImageBase64 || activePreset.imageUrl} 
                       alt="CCTV Capture" 
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-fill"
                     />
                     
                     {/* Render AI Bounding boxes if analyzed */}
@@ -1171,17 +1231,36 @@ export default function CctvSection({ onAddViolation, initialCameraId }: CctvSec
                       )}
                       
                       {isRegistered ? (
-                        <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg px-4 py-2 text-xs font-semibold font-mono flex items-center gap-2 w-full justify-center">
-                          <CheckCircle size={15} /> TIKET TILANG BERHASIL DIDAFTARKAN KE POLDA METRO JAYA
+                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+                          <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg px-4 py-2 text-xs font-semibold font-mono flex items-center gap-2 flex-1 justify-center">
+                            <CheckCircle size={15} /> TIKET TILANG BERHASIL DIDAFTARKAN KE POLDA METRO JAYA
+                          </div>
+                          <button
+                            onClick={exportCctvAsImage}
+                            disabled={isExportingFeed}
+                            className="w-full sm:w-auto bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all cursor-pointer disabled:opacity-50 justify-center py-2"
+                          >
+                            <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
+                          </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={registerTicket}
-                          id="btn-register-ticket-etle"
-                          className="w-full sm:w-auto ml-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)] flex items-center gap-2 justify-center cursor-pointer"
-                        >
-                          <FileText size={14} /> DAFTARKAN SEBAGAI TILANG RESMI (ETLE)
-                        </button>
+                        <div className="flex gap-2 w-full sm:w-auto ml-auto">
+                          <button
+                            onClick={exportCctvAsImage}
+                            disabled={isExportingFeed}
+                            className="bg-brand-dark border border-brand-cyan/25 hover:bg-brand-slate/50 text-brand-cyan px-4 py-2.5 rounded-lg text-xs font-mono flex items-center gap-2 focus:outline-none transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            <Download size={14} /> {isExportingFeed ? "Mengunduh..." : "UNDUH BUKTI PNG"}
+                          </button>
+                          
+                          <button
+                            onClick={registerTicket}
+                            id="btn-register-ticket-etle"
+                            className="w-full sm:w-auto bg-brand-cyan text-brand-dark px-6 py-2.5 rounded-lg font-display font-bold text-xs tracking-wider hover:bg-white transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)] flex items-center gap-2 justify-center cursor-pointer"
+                          >
+                            <FileText size={14} /> DAFTARKAN SEBAGAI TILANG RESMI (ETLE)
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}

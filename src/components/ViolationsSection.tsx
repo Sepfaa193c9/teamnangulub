@@ -12,10 +12,12 @@ import {
   Printer,
   ChevronRight,
   ShieldCheck,
-  X
+  X,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Violation } from "../types";
+import html2canvas from "html2canvas";
 
 interface ViolationsSectionProps {
   violations: Violation[];
@@ -60,6 +62,40 @@ export default function ViolationsSection({
       currency: "IDR",
       maximumFractionDigits: 0
     }).format(amount);
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportAsImage = async (elementId: string, filename: string) => {
+    const element = document.getElementById(elementId);
+    if (!element) {
+      alert("Elemen dokumen tidak ditemukan.");
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      // Small delay to ensure any layout settles
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const canvas = await html2canvas(element, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#060813", // Deep brand dark slate background for premium look
+        scale: 2, // High resolution
+        logging: false,
+      });
+      
+      const image = canvas.toDataURL("image/png", 1.0);
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = image;
+      link.click();
+    } catch (error) {
+      console.error("Error exporting image:", error);
+      alert("Gagal mengekspor berkas gambar. Silakan coba lagi.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handlePaySimulate = async () => {
@@ -270,6 +306,7 @@ export default function ViolationsSection({
             {selectedViolation ? (
               <motion.div
                 key={selectedViolation.id}
+                id={`ticket-card-${selectedViolation.id}`}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
@@ -386,14 +423,25 @@ export default function ViolationsSection({
                     </div>
                   )}
 
-                  {/* Print and Banding */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => alert(`Mencetak dokumen Tilang Resmi untuk ${selectedViolation.id}. Cetakan dikirim ke Printer Polantas...`)}
-                      className="flex-1 bg-brand-slate/40 border border-brand-cyan/15 hover:bg-brand-slate text-gray-300 py-2 rounded-lg text-xs font-mono flex items-center justify-center gap-2 transition-all cursor-pointer"
-                    >
-                      <Printer size={13} /> CETAK DOKUMEN
-                    </button>
+                  {/* Print, Export and Banding */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => alert(`Mencetak dokumen Tilang Resmi untuk ${selectedViolation.id}. Cetakan dikirim ke Printer Polantas...`)}
+                        className="flex-1 bg-brand-slate/40 border border-brand-cyan/15 hover:bg-brand-slate text-gray-300 py-2 rounded-lg text-xs font-mono flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      >
+                        <Printer size={13} /> CETAK
+                      </button>
+                      
+                      <button
+                        onClick={() => exportAsImage(`ticket-card-${selectedViolation.id}`, `ETLE_TICKET_${selectedViolation.id}.png`)}
+                        disabled={isExporting}
+                        className="flex-1 bg-brand-cyan/10 border border-brand-cyan/25 hover:bg-brand-cyan/20 text-brand-cyan py-2 rounded-lg text-xs font-mono flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Download size={13} /> {isExporting ? "EKSPOR..." : "EKSPOR PNG"}
+                      </button>
+                    </div>
+
                     {selectedViolation.status === "Belum Bayar" && (
                       <button
                         onClick={() => {
